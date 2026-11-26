@@ -1,0 +1,4 @@
+method,TP,FP,FN,TN,precision,recall,F1,ROC-AUC
+Rule-based,70,62,17,328,0.53,0.805,0.639,
+Isolation Forest,81,15,6,375,0.844,0.931,0.885,0.947
+Hybrid (OR),81,62,6,328,0.566,0.931,0.704,

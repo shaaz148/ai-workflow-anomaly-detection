@@ -1,0 +1,136 @@
+{
+  "name": "Thesis - Anomaly Generator (test data)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "8a36c80d-77c6-4bd7-bbe6-4751de63659f",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Picks one scenario per run. The scenario is the ground-truth label\n// that the Python extractor reads back from the execution data.\nconst r = Math.random();\nlet scenario;\nif (r < 0.80) scenario = 'normal';\nelse if (r < 0.87) scenario = 'slow';            // latency anomaly\nelse if (r < 0.92) scenario = 'hard_failure';    // step fails every attempt\nelse if (r < 0.97) scenario = 'flaky';           // step fails sometimes -> retries\nelse scenario = 'payload_spike';                 // unusual output volume\n\nconst rand = (min, max) => Math.round((min + Math.random() * (max - min)) * 100) / 100;\n\nconst delaySeconds = scenario === 'slow' ? rand(20, 45) : rand(1, 4);\nconst itemCount = scenario === 'payload_spike' ? Math.floor(rand(300, 600)) : Math.floor(rand(3, 8));\n\nreturn [{\n  json: {\n    scenario,\n    is_injected_anomaly: scenario !== 'normal',\n    delaySeconds,\n    itemCount,\n    chosenAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "12cae96a-ce7b-49ab-a9b6-59ef883d7d9e",
+      "name": "Choose Scenario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.delaySeconds }}",
+        "unit": "seconds"
+      },
+      "id": "4c7d6b6e-3812-41cb-b3a9-fc1be9fcbea5",
+      "name": "Simulated LLM Latency",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "webhookId": "4c7d6b6e-3812-41cb-b3a9-fc1be9fcbea5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulates an external tool/API call made by an AI agent step.\n// Node settings: Retry On Fail = on, Max Tries = 3, Wait Between Tries = 2000 ms.\nconst input = $input.first().json;\n\nif (input.scenario === 'hard_failure') {\n  throw new Error('Simulated tool error: upstream service unavailable (HTTP 503)');\n}\nif (input.scenario === 'flaky' && Math.random() < 0.6) {\n  throw new Error('Simulated transient error: request timeout');\n}\n\nreturn [{ json: { ...input, toolResponse: 'ok', toolFinishedAt: new Date().toISOString() } }];"
+      },
+      "id": "9985a053-c3a8-47df-a416-e4378d4fd93a",
+      "name": "Simulated Tool Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulates post-processing of the agent output.\nconst input = $input.first().json;\nconst out = [];\nfor (let i = 0; i < input.itemCount; i++) {\n  out.push({ json: { scenario: input.scenario, index: i, value: Math.random() } });\n}\nreturn out;"
+      },
+      "id": "fed01a2e-81fb-46ad-8565-be8c4faa995c",
+      "name": "Process Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Choose Scenario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Scenario": {
+      "main": [
+        [
+          {
+            "node": "Simulated LLM Latency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulated LLM Latency": {
+      "main": [
+        [
+          {
+            "node": "Simulated Tool Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulated Tool Call": {
+      "main": [
+        [
+          {
+            "node": "Process Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "active": false
+}
